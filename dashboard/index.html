@@ -1,0 +1,1270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trinity6 — Compliance Dashboard</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --bg: #0a0a0f;
+    --surface: #12121a;
+    --surface2: #1a1a28;
+    --border: #2a2a3a;
+    --accent: #00ffc8;
+    --accent2: #7c6bff;
+    --danger: #ff4444;
+    --warning: #ffb84d;
+    --success: #00ffc8;
+    --text: #e0e0f0;
+    --textdim: #6a6a8a;
+    --good: #00ffc8;
+    --warn: #ffb84d;
+    --critical: #ff4444;
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont,
+      'Segoe UI', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+  }
+
+  /* LOGIN */
+  #login-screen {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    background: radial-gradient(
+      ellipse at center,
+      #1a1a2e 0%, #0a0a0f 70%
+    );
+  }
+
+  .login-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 48px 40px;
+    width: 100%;
+    max-width: 400px;
+    text-align: center;
+  }
+
+  .logo {
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--accent);
+    letter-spacing: 2px;
+    margin-bottom: 8px;
+  }
+
+  .logo span { color: var(--textdim); }
+
+  .tagline {
+    color: var(--textdim);
+    font-size: 13px;
+    margin-bottom: 36px;
+  }
+
+  .form-group {
+    margin-bottom: 16px;
+    text-align: left;
+  }
+
+  .form-group label {
+    display: block;
+    font-size: 11px;
+    color: var(--textdim);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 6px;
+  }
+
+  .form-group input {
+    width: 100%;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 16px;
+    color: var(--text);
+    font-size: 14px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+
+  .form-group input:focus {
+    border-color: var(--accent);
+  }
+
+  .btn-primary {
+    width: 100%;
+    background: var(--accent);
+    color: #000;
+    border: none;
+    border-radius: 8px;
+    padding: 14px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 8px;
+    letter-spacing: 1px;
+    transition: opacity 0.2s;
+  }
+
+  .btn-primary:hover { opacity: 0.9; }
+
+  .error-msg {
+    color: var(--danger);
+    font-size: 13px;
+    margin-top: 12px;
+    display: none;
+  }
+
+  /* DASHBOARD */
+  #dashboard-screen { display: none; }
+
+  .topbar {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 16px 24px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+
+  .topbar-logo {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--accent);
+    letter-spacing: 2px;
+  }
+
+  .topbar-right {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .company-name {
+    font-size: 13px;
+    color: var(--textdim);
+  }
+
+  .btn-logout {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--textdim);
+    padding: 6px 14px;
+    border-radius: 6px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .btn-logout:hover {
+    border-color: var(--danger);
+    color: var(--danger);
+  }
+
+  .main-content {
+    padding: 24px;
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+
+  /* OVERVIEW CARDS */
+  .overview-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+  }
+
+  .stat-label {
+    font-size: 11px;
+    color: var(--textdim);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 8px;
+  }
+
+  .stat-value {
+    font-size: 32px;
+    font-weight: 300;
+    color: var(--accent);
+  }
+
+  .stat-sub {
+    font-size: 12px;
+    color: var(--textdim);
+    margin-top: 4px;
+  }
+
+  /* SCORE RING */
+  .score-ring-container {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .score-ring {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    font-weight: 600;
+    flex-shrink: 0;
+  }
+
+  .score-good {
+    background: rgba(0, 255, 200, 0.15);
+    border: 2px solid var(--good);
+    color: var(--good);
+  }
+
+  .score-warn {
+    background: rgba(255, 184, 77, 0.15);
+    border: 2px solid var(--warn);
+    color: var(--warn);
+  }
+
+  .score-critical {
+    background: rgba(255, 68, 68, 0.15);
+    border: 2px solid var(--critical);
+    color: var(--critical);
+  }
+
+  /* SERVERS TABLE */
+  .section-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .section-title span {
+    font-size: 11px;
+    color: var(--textdim);
+    font-weight: 400;
+  }
+
+  .servers-grid {
+    display: grid;
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+
+  .server-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: grid;
+    grid-template-columns: 60px 1fr auto;
+    gap: 16px;
+    align-items: center;
+  }
+
+  .server-card:hover {
+    border-color: var(--accent2);
+    transform: translateY(-1px);
+  }
+
+  .server-info h3 {
+    font-size: 15px;
+    font-weight: 500;
+    margin-bottom: 4px;
+  }
+
+  .server-info p {
+    font-size: 12px;
+    color: var(--textdim);
+  }
+
+  .server-meta {
+    text-align: right;
+  }
+
+  .server-meta .last-scan {
+    font-size: 11px;
+    color: var(--textdim);
+    margin-bottom: 4px;
+  }
+
+  .status-badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .badge-good {
+    background: rgba(0, 255, 200, 0.15);
+    color: var(--good);
+  }
+
+  .badge-warning {
+    background: rgba(255, 184, 77, 0.15);
+    color: var(--warn);
+  }
+
+  .badge-critical {
+    background: rgba(255, 68, 68, 0.15);
+    color: var(--critical);
+  }
+
+  /* ALERTS */
+  .alerts-section {
+    margin-bottom: 24px;
+  }
+
+  .alert-item {
+    background: var(--surface);
+    border-left: 3px solid var(--border);
+    border-radius: 0 8px 8px 0;
+    padding: 12px 16px;
+    margin-bottom: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .alert-critical { border-left-color: var(--critical); }
+  .alert-high { border-left-color: var(--warning); }
+  .alert-medium { border-left-color: var(--accent2); }
+
+  .alert-message {
+    font-size: 13px;
+    color: var(--text);
+  }
+
+  .alert-server {
+    font-size: 11px;
+    color: var(--textdim);
+    margin-top: 2px;
+  }
+
+  .alert-time {
+    font-size: 11px;
+    color: var(--textdim);
+    white-space: nowrap;
+    margin-left: 16px;
+  }
+
+  /* SERVER DETAIL */
+  #detail-screen { display: none; }
+
+  .back-btn {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--textdim);
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-size: 13px;
+    cursor: pointer;
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: fit-content;
+    transition: all 0.2s;
+  }
+
+  .back-btn:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  .detail-header {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 24px;
+    margin-bottom: 24px;
+    align-items: start;
+  }
+
+  .detail-title h2 {
+    font-size: 22px;
+    font-weight: 600;
+    margin-bottom: 4px;
+  }
+
+  .detail-title p {
+    font-size: 13px;
+    color: var(--textdim);
+  }
+
+  .score-big {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
+    font-weight: 600;
+  }
+
+  /* CHECKS */
+  .checks-section {
+    margin-bottom: 24px;
+  }
+
+  .check-item {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 16px;
+    margin-bottom: 8px;
+    display: grid;
+    grid-template-columns: 20px 1fr auto;
+    gap: 12px;
+    align-items: start;
+  }
+
+  .check-icon {
+    font-size: 14px;
+    margin-top: 1px;
+  }
+
+  .check-description {
+    font-size: 13px;
+    color: var(--text);
+    margin-bottom: 4px;
+  }
+
+  .check-result {
+    font-size: 12px;
+    color: var(--textdim);
+  }
+
+  .severity-badge {
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+  }
+
+  .sev-critical {
+    background: rgba(255, 68, 68, 0.2);
+    color: var(--critical);
+  }
+
+  .sev-high {
+    background: rgba(255, 184, 77, 0.2);
+    color: var(--warning);
+  }
+
+  .sev-medium {
+    background: rgba(124, 107, 255, 0.2);
+    color: var(--accent2);
+  }
+
+  .sev-low {
+    background: rgba(106, 106, 138, 0.2);
+    color: var(--textdim);
+  }
+
+  /* DRIFT */
+  .drift-section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 24px;
+  }
+
+  .drift-title {
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 12px;
+    color: var(--warning);
+  }
+
+  .drift-item {
+    font-size: 12px;
+    padding: 6px 0;
+    border-bottom: 1px solid var(--border);
+    color: var(--textdim);
+  }
+
+  .drift-item:last-child {
+    border-bottom: none;
+  }
+
+  .drift-new-fail { color: var(--critical); }
+  .drift-new-pass { color: var(--good); }
+
+  /* SCORE HISTORY */
+  .history-bar-chart {
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    height: 80px;
+    margin-top: 12px;
+  }
+
+  .history-bar-wrap {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    height: 100%;
+    justify-content: flex-end;
+  }
+
+  .history-bar {
+    width: 100%;
+    border-radius: 3px 3px 0 0;
+    min-height: 4px;
+    transition: height 0.3s;
+  }
+
+  .history-date {
+    font-size: 9px;
+    color: var(--textdim);
+    writing-mode: vertical-lr;
+    transform: rotate(180deg);
+  }
+
+  /* LOADING */
+  .loading {
+    text-align: center;
+    padding: 40px;
+    color: var(--textdim);
+    font-size: 13px;
+  }
+
+  .loading-dot {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    margin: 0 2px;
+    animation: pulse 1.4s infinite ease-in-out;
+  }
+
+  .loading-dot:nth-child(2) { animation-delay: 0.2s; }
+  .loading-dot:nth-child(3) { animation-delay: 0.4s; }
+
+  @keyframes pulse {
+    0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
+    40% { transform: scale(1); opacity: 1; }
+  }
+
+  .empty-state {
+    text-align: center;
+    padding: 40px;
+    color: var(--textdim);
+    font-size: 13px;
+  }
+
+  .tabs {
+    display: flex;
+    gap: 0;
+    margin-bottom: 16px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .tab {
+    padding: 10px 20px;
+    font-size: 13px;
+    color: var(--textdim);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: all 0.2s;
+  }
+
+  .tab.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+  }
+
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+
+  @media (max-width: 600px) {
+    .main-content { padding: 16px; }
+    .server-card {
+      grid-template-columns: 50px 1fr;
+      grid-template-rows: auto auto;
+    }
+    .server-meta {
+      grid-column: 2;
+      text-align: left;
+    }
+    .detail-header {
+      grid-template-columns: 1fr;
+    }
+    .overview-grid {
+      grid-template-columns: 1fr 1fr;
+    }
+  }
+</style>
+</head>
+<body>
+
+<!-- LOGIN SCREEN -->
+<div id="login-screen">
+  <div class="login-box">
+    <div class="logo">TRINITY<span>6</span></div>
+    <div class="tagline">Intelligent Compliance Monitoring</div>
+    <div class="form-group">
+      <label>Email</label>
+      <input type="email" id="login-email"
+        placeholder="you@company.com"
+        onkeydown="if(event.key==='Enter')doLogin()">
+    </div>
+    <div class="form-group">
+      <label>Password</label>
+      <input type="password" id="login-password"
+        placeholder="Your password"
+        onkeydown="if(event.key==='Enter')doLogin()">
+    </div>
+    <button class="btn-primary" onclick="doLogin()">
+      SIGN IN
+    </button>
+    <div class="error-msg" id="login-error">
+      Invalid email or password
+    </div>
+  </div>
+</div>
+
+<!-- DASHBOARD SCREEN -->
+<div id="dashboard-screen">
+  <div class="topbar">
+    <div class="topbar-logo">TRINITY6</div>
+    <div class="topbar-right">
+      <div class="company-name" id="company-display"></div>
+      <button class="btn-logout" onclick="doLogout()">
+        Sign Out
+      </button>
+    </div>
+  </div>
+
+  <div class="main-content">
+
+    <!-- OVERVIEW -->
+    <div class="overview-grid" id="overview-grid">
+      <div class="loading">
+        <span class="loading-dot"></span>
+        <span class="loading-dot"></span>
+        <span class="loading-dot"></span>
+      </div>
+    </div>
+
+    <!-- TABS -->
+    <div class="tabs">
+      <div class="tab active"
+        onclick="switchTab('servers')">
+        Servers
+      </div>
+      <div class="tab"
+        onclick="switchTab('alerts')">
+        Alerts
+      </div>
+      <div class="tab"
+        onclick="switchTab('history')">
+        History
+      </div>
+    </div>
+
+    <!-- SERVERS TAB -->
+    <div class="tab-content active" id="tab-servers">
+      <div class="servers-grid" id="servers-grid">
+        <div class="loading">
+          <span class="loading-dot"></span>
+          <span class="loading-dot"></span>
+          <span class="loading-dot"></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ALERTS TAB -->
+    <div class="tab-content" id="tab-alerts">
+      <div class="alerts-section" id="alerts-list">
+        <div class="loading">
+          <span class="loading-dot"></span>
+          <span class="loading-dot"></span>
+          <span class="loading-dot"></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- HISTORY TAB -->
+    <div class="tab-content" id="tab-history">
+      <div id="history-list">
+        <div class="loading">
+          <span class="loading-dot"></span>
+          <span class="loading-dot"></span>
+          <span class="loading-dot"></span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- SERVER DETAIL SCREEN -->
+<div id="detail-screen">
+  <div class="topbar">
+    <div class="topbar-logo">TRINITY6</div>
+    <div class="topbar-right">
+      <div class="company-name" id="company-display2"></div>
+      <button class="btn-logout" onclick="doLogout()">
+        Sign Out
+      </button>
+    </div>
+  </div>
+  <div class="main-content" id="detail-content">
+    <div class="loading">
+      <span class="loading-dot"></span>
+      <span class="loading-dot"></span>
+      <span class="loading-dot"></span>
+    </div>
+  </div>
+</div>
+
+<script>
+// ==========================================
+// CONFIG
+// ==========================================
+
+const API = 'https://trinity6-platform.onrender.com';
+let sessionToken = localStorage.getItem('t6_token');
+let clientData = null;
+
+// ==========================================
+// INIT
+// ==========================================
+
+window.onload = function() {
+  if (sessionToken) {
+    showDashboard();
+  }
+};
+
+// ==========================================
+// AUTH
+// ==========================================
+
+async function doLogin() {
+  const email = document.getElementById(
+    'login-email'
+  ).value.trim();
+  const password = document.getElementById(
+    'login-password'
+  ).value;
+  const errEl = document.getElementById('login-error');
+
+  errEl.style.display = 'none';
+
+  if (!email || !password) {
+    errEl.textContent = 'Please enter email and password';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  try {
+    const res = await fetch(`${API}/api/v1/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password })
+    });
+    const data = await res.json();
+
+    if (data.success) {
+      sessionToken = data.session_token;
+      localStorage.setItem('t6_token', sessionToken);
+      localStorage.setItem(
+        't6_company', data.company || ''
+      );
+      showDashboard();
+    } else {
+      errEl.textContent = data.error || 'Login failed';
+      errEl.style.display = 'block';
+    }
+  } catch(e) {
+    errEl.textContent = 'Cannot connect to server';
+    errEl.style.display = 'block';
+  }
+}
+
+function doLogout() {
+  localStorage.removeItem('t6_token');
+  localStorage.removeItem('t6_company');
+  sessionToken = null;
+  document.getElementById('login-screen').style.display = 'flex';
+  document.getElementById('dashboard-screen').style.display = 'none';
+  document.getElementById('detail-screen').style.display = 'none';
+}
+
+// ==========================================
+// NAVIGATION
+// ==========================================
+
+function showDashboard() {
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('dashboard-screen').style.display = 'block';
+  document.getElementById('detail-screen').style.display = 'none';
+
+  const company = localStorage.getItem('t6_company') || '';
+  document.getElementById('company-display').textContent = company;
+
+  loadOverview();
+  loadAlerts();
+  loadHistory();
+}
+
+function showDetail(serverName) {
+  document.getElementById('dashboard-screen').style.display = 'none';
+  document.getElementById('detail-screen').style.display = 'block';
+
+  const company = localStorage.getItem('t6_company') || '';
+  document.getElementById('company-display2').textContent = company;
+
+  loadServerDetail(serverName);
+}
+
+function switchTab(tab) {
+  document.querySelectorAll('.tab').forEach((t, i) => {
+    t.classList.toggle('active', ['servers','alerts','history'][i] === tab);
+  });
+  document.querySelectorAll('.tab-content').forEach(c => {
+    c.classList.remove('active');
+  });
+  document.getElementById(`tab-${tab}`).classList.add('active');
+}
+
+// ==========================================
+// API CALLS
+// ==========================================
+
+async function apiFetch(path) {
+  const res = await fetch(`${API}${path}`, {
+    headers: { 'Authorization': `Bearer ${sessionToken}` }
+  });
+  if (res.status === 401) {
+    doLogout();
+    return null;
+  }
+  return res.json();
+}
+
+// ==========================================
+// LOAD OVERVIEW
+// ==========================================
+
+async function loadOverview() {
+  const data = await apiFetch('/api/v1/dashboard/overview');
+  if (!data) return;
+
+  clientData = data;
+  const grid = document.getElementById('overview-grid');
+
+  const statusColor = {
+    good: 'var(--good)',
+    warning: 'var(--warn)',
+    critical: 'var(--critical)'
+  }[data.overall_status] || 'var(--textdim)';
+
+  grid.innerHTML = `
+    <div class="stat-card">
+      <div class="stat-label">Overall Score</div>
+      <div class="stat-value" style="color:${statusColor}">
+        ${data.average_score}%
+      </div>
+      <div class="stat-sub">${data.overall_status}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Servers Monitored</div>
+      <div class="stat-value">${data.total_servers}</div>
+      <div class="stat-sub">
+        ${data.plan || 'starter'} plan
+      </div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Company</div>
+      <div class="stat-value" style="font-size:18px;padding-top:8px">
+        ${data.company || ''}
+      </div>
+      <div class="stat-sub">
+        ${data.client_name || ''}
+      </div>
+    </div>
+  `;
+
+  loadServers(data.servers);
+}
+
+// ==========================================
+// LOAD SERVERS
+// ==========================================
+
+function loadServers(servers) {
+  const grid = document.getElementById('servers-grid');
+
+  if (!servers || servers.length === 0) {
+    grid.innerHTML = `
+      <div class="empty-state">
+        No servers found. Install the Trinity6 agent
+        on your server to start monitoring.
+      </div>
+    `;
+    return;
+  }
+
+  grid.innerHTML = servers.map(s => {
+    const scoreClass = s.score >= 80
+      ? 'score-good'
+      : s.score >= 60
+      ? 'score-warn'
+      : 'score-critical';
+    const badgeClass = s.status === 'good'
+      ? 'badge-good'
+      : s.status === 'warning'
+      ? 'badge-warning'
+      : 'badge-critical';
+    const lastScan = s.last_scan
+      ? new Date(s.last_scan).toLocaleDateString()
+      : 'Never';
+
+    return `
+      <div class="server-card"
+        onclick="showDetail('${s.name}')">
+        <div class="score-ring ${scoreClass}">
+          ${s.score}%
+        </div>
+        <div class="server-info">
+          <h3>${s.name}</h3>
+          <p>${s.hostname || ''} — ${s.os_info || ''}</p>
+        </div>
+        <div class="server-meta">
+          <div class="last-scan">
+            Last scan: ${lastScan}
+          </div>
+          <span class="status-badge ${badgeClass}">
+            ${s.status}
+          </span>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+// ==========================================
+// LOAD ALERTS
+// ==========================================
+
+async function loadAlerts() {
+  const data = await apiFetch('/api/v1/dashboard/alerts');
+  if (!data) return;
+
+  const list = document.getElementById('alerts-list');
+
+  if (!data.alerts || data.alerts.length === 0) {
+    list.innerHTML = `
+      <div class="empty-state">
+        No active alerts. All systems healthy.
+      </div>
+    `;
+    return;
+  }
+
+  list.innerHTML = data.alerts.map(a => {
+    const alertClass = `alert-${a.severity}`;
+    const time = a.timestamp
+      ? new Date(a.timestamp).toLocaleDateString()
+      : '';
+    return `
+      <div class="alert-item ${alertClass}">
+        <div>
+          <div class="alert-message">${a.message}</div>
+          <div class="alert-server">${a.server}</div>
+        </div>
+        <div class="alert-time">${time}</div>
+      </div>
+    `;
+  }).join('');
+}
+
+// ==========================================
+// LOAD HISTORY
+// ==========================================
+
+async function loadHistory() {
+  const data = await apiFetch(
+    '/api/v1/dashboard/history'
+  );
+  if (!data) return;
+
+  const list = document.getElementById('history-list');
+
+  if (!data.history || data.history.length === 0) {
+    list.innerHTML = `
+      <div class="empty-state">
+        No scan history yet.
+      </div>
+    `;
+    return;
+  }
+
+  list.innerHTML = `
+    <div class="servers-grid">
+      ${data.history.map(h => {
+        const scoreColor = h.score >= 80
+          ? 'var(--good)'
+          : h.score >= 60
+          ? 'var(--warn)'
+          : 'var(--critical)';
+        const date = h.timestamp
+          ? new Date(h.timestamp).toLocaleString()
+          : '';
+        return `
+          <div class="check-item"
+            style="cursor:default">
+            <div class="check-icon">📋</div>
+            <div>
+              <div class="check-description">
+                ${h.server_name}
+              </div>
+              <div class="check-result">${date}</div>
+            </div>
+            <div style="text-align:right">
+              <div style="font-size:18px;
+                font-weight:600;
+                color:${scoreColor}">
+                ${h.score}%
+              </div>
+              <div style="font-size:11px;
+                color:var(--textdim)">
+                ${h.failures} failures
+                ${h.drift ? ' • drift detected' : ''}
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('')}
+    </div>
+  `;
+}
+
+// ==========================================
+// SERVER DETAIL
+// ==========================================
+
+async function loadServerDetail(serverName) {
+  const content = document.getElementById(
+    'detail-content'
+  );
+  content.innerHTML = `
+    <div class="loading">
+      <span class="loading-dot"></span>
+      <span class="loading-dot"></span>
+      <span class="loading-dot"></span>
+    </div>
+  `;
+
+  const encoded = encodeURIComponent(serverName);
+  const data = await apiFetch(
+    `/api/v1/dashboard/server/${encoded}`
+  );
+  if (!data) return;
+
+  const score = data.score || {};
+  const drift = data.drift || {};
+  const scoreVal = score.score || 0;
+
+  const scoreClass = scoreVal >= 80
+    ? 'score-good'
+    : scoreVal >= 60
+    ? 'score-warn'
+    : 'score-critical';
+
+  const prevScore = data.previous_score;
+  const scoreTrend = prevScore !== undefined
+    ? scoreVal > prevScore
+      ? `▲ ${scoreVal - prevScore}% from last scan`
+      : scoreVal < prevScore
+      ? `▼ ${prevScore - scoreVal}% from last scan`
+      : 'No change from last scan'
+    : 'First scan';
+
+  const trendColor = prevScore === undefined
+    ? 'var(--textdim)'
+    : scoreVal >= prevScore
+    ? 'var(--good)'
+    : 'var(--critical)';
+
+  content.innerHTML = `
+    <button class="back-btn" onclick="showDashboard()">
+      ← Back to Dashboard
+    </button>
+
+    <div class="detail-header">
+      <div class="detail-title">
+        <h2>${data.server_name}</h2>
+        <p>${data.hostname || ''} —
+          ${data.os_info || ''}</p>
+        <p style="margin-top:4px;
+          color:${trendColor};font-size:12px">
+          ${scoreTrend}
+        </p>
+      </div>
+      <div class="score-big ${scoreClass}">
+        ${scoreVal}%
+      </div>
+    </div>
+
+    <div class="overview-grid">
+      <div class="stat-card">
+        <div class="stat-label">Passed</div>
+        <div class="stat-value"
+          style="color:var(--good)">
+          ${score.pass || 0}
+        </div>
+        <div class="stat-sub">
+          of ${score.total || 0} checks
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Critical</div>
+        <div class="stat-value"
+          style="color:var(--critical)">
+          ${score.critical || 0}
+        </div>
+        <div class="stat-sub">immediate action</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">High</div>
+        <div class="stat-value"
+          style="color:var(--warning)">
+          ${score.high || 0}
+        </div>
+        <div class="stat-sub">fix this week</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Medium</div>
+        <div class="stat-value"
+          style="color:var(--accent2)">
+          ${score.medium || 0}
+        </div>
+        <div class="stat-sub">fix this month</div>
+      </div>
+    </div>
+
+    ${drift.has_changes ? `
+      <div class="drift-section">
+        <div class="drift-title">
+          ⚡ Changes Since Last Scan
+        </div>
+        ${drift.new_failures && drift.new_failures.length > 0
+          ? drift.new_failures.map(f => `
+            <div class="drift-item drift-new-fail">
+              ✗ NEW FAILURE: ${f.description}
+            </div>
+          `).join('')
+          : ''}
+        ${drift.new_passes && drift.new_passes.length > 0
+          ? drift.new_passes.map(p => `
+            <div class="drift-item drift-new-pass">
+              ✓ FIXED: ${p.description}
+            </div>
+          `).join('')
+          : ''}
+      </div>
+    ` : ''}
+
+    ${data.score_history && data.score_history.length > 1
+      ? `
+      <div class="stat-card" style="margin-bottom:24px">
+        <div class="stat-label">Score History</div>
+        <div class="history-bar-chart">
+          ${data.score_history.slice().reverse().map(h => {
+            const color = h.score >= 80
+              ? 'var(--good)'
+              : h.score >= 60
+              ? 'var(--warn)'
+              : 'var(--critical)';
+            return `
+              <div class="history-bar-wrap">
+                <div class="history-bar"
+                  style="height:${h.score}%;
+                  background:${color}">
+                </div>
+                <div class="history-date">
+                  ${h.date.slice(5)}
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      </div>
+    ` : ''}
+
+    <div class="checks-section">
+      <div class="section-title">
+        Failed Checks
+        <span>${data.failed_checks
+          ? data.failed_checks.length
+          : 0} issues</span>
+      </div>
+      ${data.failed_checks && data.failed_checks.length > 0
+        ? data.failed_checks.map(c => {
+          const sevClass = `sev-${c.severity || 'low'}`;
+          return `
+            <div class="check-item">
+              <div class="check-icon">✗</div>
+              <div>
+                <div class="check-description">
+                  ${c.description}
+                </div>
+                <div class="check-result">
+                  ${c.result || ''}
+                </div>
+              </div>
+              <span class="severity-badge ${sevClass}">
+                ${c.severity || 'low'}
+              </span>
+            </div>
+          `;
+        }).join('')
+        : `<div class="empty-state">
+             No failures. Server is compliant.
+           </div>`
+      }
+    </div>
+  `;
+}
+</script>
+</body>
+</html>
