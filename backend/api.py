@@ -1,10 +1,8 @@
 #!/usr/bin/env python3
 """
 Trinity6 Platform Backend API
-Receives scan results from Trinity6 agents
-Stores results and serves dashboard
-Sends email notifications to clients
-Deploy this on trinity6.com server
+Flask version - works on any Python version
+No pydantic no Rust no compilation issues
 """
 
 import os
@@ -14,16 +12,9 @@ import hashlib
 import secrets
 import logging
 from datetime import datetime, timedelta
-from typing import Optional, List, Dict, Any
 from pathlib import Path
-
-from fastapi import FastAPI, HTTPException, Depends, Request, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse
-from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
-import uvicorn
+from functools import wraps
+from flask import Flask, request, jsonify
 
 
 # ==========================================
@@ -33,19 +24,7 @@ import uvicorn
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger('trinity6_api')
 
-app = FastAPI(
-    title="Trinity6 Platform API",
-    description="Compliance monitoring for SMBs",
-    version="1.0.0"
-)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+app = Flask(__name__)
 
 DATA_DIR = Path("data")
 CLIENTS_FILE = DATA_DIR / "clients.json"
@@ -57,46 +36,10 @@ SCANS_DIR.mkdir(exist_ok=True)
 
 
 # ==========================================
-# DATA MODELS
-# ==========================================
-
-class ScanResult(BaseModel):
-    client_id: str
-    server_name: str
-    hostname: str
-    os_info: str
-    scan_timestamp: str
-    agent_version: str
-    checks: List[Dict[str, Any]]
-    summary: Dict[str, Any]
-    previous_scan_id: Optional[str] = None
-
-
-class ClientRegister(BaseModel):
-    name: str
-    company: str
-    email: str
-    plan: str = "starter"
-
-
-class LoginRequest(BaseModel):
-    email: str
-    password: str
-
-
-class DriftAlert(BaseModel):
-    client_id: str
-    server_name: str
-    new_failures: List[Dict]
-    new_passes: List[Dict]
-
-
-# ==========================================
 # DATA HELPERS
 # ==========================================
 
-def load_json(filepath: Path) -> dict:
-    """Load JSON file safely"""
+def load_json(filepath):
     if filepath.exists():
         try:
             with open(filepath, 'r') as f:
@@ -106,35 +49,32 @@ def load_json(filepath: Path) -> dict:
     return {}
 
 
-def save_json(filepath: Path, data: dict):
-    """Save JSON file safely"""
+def save_json(filepath, data):
     filepath.parent.mkdir(parents=True, exist_ok=True)
     with open(filepath, 'w') as f:
         json.dump(data, f, indent=2)
 
 
-def load_clients() -> dict:
+def load_clients():
     return load_json(CLIENTS_FILE)
 
 
-def save_clients(clients: dict):
+def save_clients(clients):
     save_json(CLIENTS_FILE, clients)
 
 
-def load_tokens() -> dict:
+def load_tokens():
     return load_json(TOKENS_FILE)
 
 
-def save_tokens(tokens: dict):
+def save_tokens(tokens):
     save_json(TOKENS_FILE, tokens)
 
 
-def get_client_scans(client_id: str) -> List[dict]:
-    """Get all scans for a client sorted by date"""
+def get_client_scans(client_id):
     client_scan_dir = SCANS_DIR / client_id
     if not client_scan_dir.exists():
         return []
-
     scans = []
     for scan_file in sorted(
         client_scan_dir.glob("*.json"),
@@ -148,38 +88,27 @@ def get_client_scans(client_id: str) -> List[dict]:
     return scans
 
 
-def save_scan(client_id: str, scan_data: dict) -> str:
-    """Save scan result and return scan ID"""
+def save_scan(client_id, scan_data):
     scan_id = str(uuid.uuid4())[:8]
     scan_data['scan_id'] = scan_id
-
     client_scan_dir = SCANS_DIR / client_id
     client_scan_dir.mkdir(parents=True, exist_ok=True)
-
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     scan_file = client_scan_dir / f"{timestamp}_{scan_id}.json"
-
     with open(scan_file, 'w') as f:
         json.dump(scan_data, f, indent=2)
-
     return scan_id
 
 
-def calculate_score(checks: List[dict]) -> dict:
-    """Calculate compliance score from checks"""
+def calculate_score(checks):
     total = len(checks)
     if total == 0:
         return {
-            'score': 0,
-            'pass': 0,
-            'fail': 0,
-            'warn': 0,
-            'critical': 0,
-            'high': 0,
-            'medium': 0,
-            'low': 0
+            'score': 0, 'total': 0,
+            'pass': 0, 'fail': 0, 'warn': 0,
+            'critical': 0, 'high': 0,
+            'medium': 0, 'low': 0
         }
-
     passed = sum(
         1 for c in checks if c.get('status') == 'PASS'
     )
@@ -189,7 +118,6 @@ def calculate_score(checks: List[dict]) -> dict:
     warned = sum(
         1 for c in checks if c.get('status') == 'WARN'
     )
-
     critical = sum(
         1 for c in checks
         if c.get('status') == 'FAIL'
@@ -210,38 +138,25 @@ def calculate_score(checks: List[dict]) -> dict:
         if c.get('status') in ['FAIL', 'WARN']
         and c.get('severity') == 'low'
     )
-
     score = round((passed / total) * 100)
-
     return {
-        'score': score,
-        'total': total,
-        'pass': passed,
-        'fail': failed,
-        'warn': warned,
-        'critical': critical,
-        'high': high,
-        'medium': medium,
-        'low': low
+        'score': score, 'total': total,
+        'pass': passed, 'fail': failed, 'warn': warned,
+        'critical': critical, 'high': high,
+        'medium': medium, 'low': low
     }
 
 
-def detect_drift(
-    current_checks: List[dict],
-    previous_checks: List[dict]
-) -> dict:
-    """Detect what changed between scans"""
+def detect_drift(current_checks, previous_checks):
     current_by_desc = {
         c['description']: c for c in current_checks
     }
     previous_by_desc = {
         c['description']: c for c in previous_checks
     }
-
     new_failures = []
     new_passes = []
     unchanged_failures = []
-
     for desc, check in current_by_desc.items():
         prev = previous_by_desc.get(desc)
         if prev:
@@ -256,7 +171,6 @@ def detect_drift(
         else:
             if check['status'] == 'FAIL':
                 new_failures.append(check)
-
     return {
         'has_changes': bool(new_failures or new_passes),
         'new_failures': new_failures,
@@ -267,49 +181,28 @@ def detect_drift(
     }
 
 
+def get_server_status(score):
+    if score >= 80:
+        return 'good'
+    elif score >= 60:
+        return 'warning'
+    return 'critical'
+
+
 # ==========================================
-# AUTH
+# AUTH HELPERS
 # ==========================================
 
-security = HTTPBearer(auto_error=False)
-
-
-def verify_agent_token(
-    credentials: HTTPAuthorizationCredentials = Depends(security)
-) -> str:
-    """Verify agent API token"""
-    if not credentials:
-        raise HTTPException(
-            status_code=401,
-            detail="No authentication token provided"
-        )
-
+def verify_agent_token(token):
     tokens = load_tokens()
-    token = credentials.credentials
-
     for client_id, token_data in tokens.items():
         if token_data.get('agent_token') == token:
             return client_id
-
-    raise HTTPException(
-        status_code=401,
-        detail="Invalid agent token"
-    )
+    return None
 
 
-def verify_dashboard_token(
-    credentials: HTTPAuthorizationCredentials = Depends(security)
-) -> str:
-    """Verify dashboard session token"""
-    if not credentials:
-        raise HTTPException(
-            status_code=401,
-            detail="Not authenticated"
-        )
-
+def verify_session_token(token):
     tokens = load_tokens()
-    token = credentials.credentials
-
     for client_id, token_data in tokens.items():
         if token_data.get('session_token') == token:
             expires = token_data.get('session_expires')
@@ -319,151 +212,175 @@ def verify_dashboard_token(
                     return client_id
             else:
                 return client_id
+    return None
 
-    raise HTTPException(
-        status_code=401,
-        detail="Session expired. Please log in again."
+
+def verify_admin(req):
+    secret = req.headers.get('X-Admin-Secret')
+    expected = os.environ.get(
+        'TRINITY6_ADMIN_SECRET', 'changeme'
     )
+    return secret == expected
+
+
+def agent_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        auth = request.headers.get('Authorization', '')
+        token = auth.replace('Bearer ', '').strip()
+        client_id = verify_agent_token(token)
+        if not client_id:
+            return jsonify({
+                'error': 'Invalid agent token'
+            }), 401
+        return f(client_id, *args, **kwargs)
+    return decorated
+
+
+def session_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        auth = request.headers.get('Authorization', '')
+        token = auth.replace('Bearer ', '').strip()
+        client_id = verify_session_token(token)
+        if not client_id:
+            return jsonify({
+                'error': 'Session expired. Please log in.'
+            }), 401
+        return f(client_id, *args, **kwargs)
+    return decorated
+
+
+# ==========================================
+# HEALTH CHECK
+# ==========================================
+
+@app.route('/health')
+def health_check():
+    clients = load_clients()
+    return jsonify({
+        'status': 'healthy',
+        'version': '1.0.0',
+        'total_clients': len(clients),
+        'timestamp': datetime.now().isoformat()
+    })
+
+
+@app.route('/')
+def root():
+    return jsonify({
+        'name': 'Trinity6 Platform API',
+        'version': '1.0.0',
+        'status': 'running',
+        'endpoints': {
+            'health': '/health',
+            'scan': '/api/v1/scan/results',
+            'login': '/api/v1/auth/login',
+            'dashboard': '/api/v1/dashboard/overview',
+            'admin': '/api/v1/admin/clients'
+        }
+    })
 
 
 # ==========================================
 # AGENT ENDPOINTS
 # ==========================================
 
-@app.post("/api/v1/scan/results")
-async def receive_scan_results(
-    scan: ScanResult,
-    client_id: str = Depends(verify_agent_token)
-):
-    """
-    Receive scan results from Trinity6 agent
-    Agent calls this after every scan
-    """
-    if scan.client_id != client_id:
-        raise HTTPException(
-            status_code=403,
-            detail="Client ID mismatch"
-        )
+@app.route('/api/v1/scan/results', methods=['POST'])
+@agent_required
+def receive_scan_results(client_id):
+    """Receive scan results from Trinity6 agent"""
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'No data provided'}), 400
+
+    if data.get('client_id') != client_id:
+        return jsonify({'error': 'Client ID mismatch'}), 403
 
     clients = load_clients()
     if client_id not in clients:
-        raise HTTPException(
-            status_code=404,
-            detail="Client not found"
-        )
+        return jsonify({'error': 'Client not found'}), 404
 
-    scan_data = scan.dict()
-
-    score = calculate_score(scan_data['checks'])
-    scan_data['score'] = score
+    score = calculate_score(data.get('checks', []))
+    data['score'] = score
 
     previous_scans = get_client_scans(client_id)
     drift = {}
-
     if previous_scans:
-        latest_previous = None
         for prev in previous_scans:
-            if prev.get('server_name') == scan.server_name:
-                latest_previous = prev
+            if prev.get('server_name') == data.get('server_name'):
+                drift = detect_drift(
+                    data.get('checks', []),
+                    prev.get('checks', [])
+                )
+                data['drift'] = drift
+                data['previous_score'] = prev.get(
+                    'score', {}
+                ).get('score')
                 break
 
-        if latest_previous:
-            drift = detect_drift(
-                scan_data['checks'],
-                latest_previous.get('checks', [])
-            )
-            scan_data['drift'] = drift
-            scan_data['previous_score'] = latest_previous.get(
-                'score', {}
-            ).get('score')
-
-    scan_id = save_scan(client_id, scan_data)
+    scan_id = save_scan(client_id, data)
 
     if not clients[client_id].get('servers'):
         clients[client_id]['servers'] = {}
 
-    clients[client_id]['servers'][scan.server_name] = {
-        'last_scan': scan.scan_timestamp,
+    clients[client_id]['servers'][data['server_name']] = {
+        'last_scan': data.get('scan_timestamp'),
         'last_score': score['score'],
         'last_scan_id': scan_id,
-        'os_info': scan.os_info,
-        'hostname': scan.hostname
+        'os_info': data.get('os_info'),
+        'hostname': data.get('hostname')
     }
     clients[client_id]['last_activity'] = \
         datetime.now().isoformat()
     save_clients(clients)
 
-    send_scan_notification(
-        client_id=client_id,
-        clients=clients,
-        scan_data=scan_data,
-        score=score,
-        drift=drift
-    )
-
     logger.info(
-        f"Scan received from {client_id} "
-        f"server {scan.server_name} "
-        f"score {score['score']}%"
+        f"Scan from {client_id} "
+        f"server={data.get('server_name')} "
+        f"score={score['score']}%"
     )
 
-    return {
-        "success": True,
-        "scan_id": scan_id,
-        "score": score['score'],
-        "message": f"Scan processed successfully. Score: {score['score']}%"
-    }
-
-
-@app.get("/api/v1/agent/config/{client_id}")
-async def get_agent_config(
-    client_id: str,
-    agent_token: str = Depends(verify_agent_token)
-):
-    """Agent fetches its config from server"""
-    clients = load_clients()
-    if client_id not in clients:
-        raise HTTPException(status_code=404)
-
-    client = clients[client_id]
-    return {
-        "scan_frequency_days": client.get(
-            'scan_frequency_days', 7
-        ),
-        "plan": client.get('plan', 'starter'),
-        "notifications_enabled": client.get(
-            'notifications_enabled', True
-        )
-    }
+    return jsonify({
+        'success': True,
+        'scan_id': scan_id,
+        'score': score['score'],
+        'message': f"Scan processed. Score: {score['score']}%"
+    })
 
 
 # ==========================================
 # AUTH ENDPOINTS
 # ==========================================
 
-@app.post("/api/v1/auth/login")
-async def login(request: LoginRequest):
+@app.route('/api/v1/auth/login', methods=['POST'])
+def login():
     """Client dashboard login"""
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'No data'}), 400
+
+    email = data.get('email', '').lower()
+    password = data.get('password', '')
+
     clients = load_clients()
     tokens = load_tokens()
 
     client_id = None
     for cid, client in clients.items():
-        if client.get('email', '').lower() == \
-           request.email.lower():
+        if client.get('email', '').lower() == email:
             stored_hash = client.get('password_hash', '')
             input_hash = hashlib.sha256(
-                request.password.encode()
+                password.encode()
             ).hexdigest()
             if stored_hash == input_hash:
                 client_id = cid
                 break
 
     if not client_id:
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid email or password"
-        )
+        return jsonify({
+            'error': 'Invalid email or password'
+        }), 401
 
     session_token = secrets.token_urlsafe(32)
     expires = (
@@ -476,155 +393,126 @@ async def login(request: LoginRequest):
     tokens[client_id]['session_expires'] = expires
     save_tokens(tokens)
 
-    return {
-        "success": True,
-        "session_token": session_token,
-        "client_id": client_id,
-        "client_name": clients[client_id].get('name'),
-        "company": clients[client_id].get('company')
-    }
+    return jsonify({
+        'success': True,
+        'session_token': session_token,
+        'client_id': client_id,
+        'client_name': clients[client_id].get('name'),
+        'company': clients[client_id].get('company')
+    })
 
 
 # ==========================================
 # DASHBOARD ENDPOINTS
 # ==========================================
 
-@app.get("/api/v1/dashboard/overview")
-async def get_dashboard_overview(
-    client_id: str = Depends(verify_dashboard_token)
-):
-    """Get dashboard overview for client"""
+@app.route('/api/v1/dashboard/overview')
+@session_required
+def dashboard_overview(client_id):
+    """Dashboard overview for client"""
     clients = load_clients()
     if client_id not in clients:
-        raise HTTPException(status_code=404)
+        return jsonify({'error': 'Client not found'}), 404
 
     client = clients[client_id]
     servers = client.get('servers', {})
 
     server_list = []
     total_score = 0
-
     for server_name, server_data in servers.items():
+        score = server_data.get('last_score', 0)
         server_list.append({
             'name': server_name,
             'hostname': server_data.get('hostname'),
             'os_info': server_data.get('os_info'),
             'last_scan': server_data.get('last_scan'),
-            'score': server_data.get('last_score', 0),
-            'status': get_server_status(
-                server_data.get('last_score', 0)
-            )
+            'score': score,
+            'status': get_server_status(score)
         })
-        total_score += server_data.get('last_score', 0)
+        total_score += score
 
     avg_score = round(
         total_score / len(servers)
     ) if servers else 0
 
-    return {
-        "client_name": client.get('name'),
-        "company": client.get('company'),
-        "plan": client.get('plan', 'starter'),
-        "total_servers": len(servers),
-        "average_score": avg_score,
-        "overall_status": get_server_status(avg_score),
-        "servers": sorted(
-            server_list,
-            key=lambda x: x['score']
+    return jsonify({
+        'client_name': client.get('name'),
+        'company': client.get('company'),
+        'plan': client.get('plan', 'starter'),
+        'total_servers': len(servers),
+        'average_score': avg_score,
+        'overall_status': get_server_status(avg_score),
+        'servers': sorted(
+            server_list, key=lambda x: x['score']
         ),
-        "last_activity": client.get('last_activity')
-    }
+        'last_activity': client.get('last_activity')
+    })
 
 
-@app.get("/api/v1/dashboard/server/{server_name}")
-async def get_server_detail(
-    server_name: str,
-    client_id: str = Depends(verify_dashboard_token)
-):
-    """Get detailed scan results for a server"""
+@app.route('/api/v1/dashboard/server/<server_name>')
+@session_required
+def server_detail(client_id, server_name):
+    """Detailed scan results for a server"""
     scans = get_client_scans(client_id)
-
     server_scans = [
         s for s in scans
         if s.get('server_name') == server_name
     ]
 
     if not server_scans:
-        raise HTTPException(
-            status_code=404,
-            detail="No scans found for this server"
-        )
+        return jsonify({
+            'error': 'No scans found for this server'
+        }), 404
 
     latest = server_scans[0]
-
     score_history = []
     for scan in server_scans[:10]:
         score_history.append({
-            'date': scan.get('scan_timestamp', '')[:10],
-            'score': scan.get('score', {}).get('score', 0)
+            'date': scan.get(
+                'scan_timestamp', ''
+            )[:10],
+            'score': scan.get(
+                'score', {}
+            ).get('score', 0)
         })
 
     checks = latest.get('checks', [])
     failed_checks = [
         c for c in checks if c.get('status') == 'FAIL'
     ]
+    severity_order = {
+        'critical': 0, 'high': 1,
+        'medium': 2, 'low': 3
+    }
     failed_checks.sort(
-        key=lambda x: {
-            'critical': 0, 'high': 1,
-            'medium': 2, 'low': 3
-        }.get(x.get('severity', 'low'), 3)
+        key=lambda x: severity_order.get(
+            x.get('severity', 'low'), 3
+        )
     )
 
-    return {
-        "server_name": server_name,
-        "hostname": latest.get('hostname'),
-        "os_info": latest.get('os_info'),
-        "last_scan": latest.get('scan_timestamp'),
-        "score": latest.get('score', {}),
-        "previous_score": latest.get('previous_score'),
-        "drift": latest.get('drift', {}),
-        "failed_checks": failed_checks,
-        "all_checks": checks,
-        "score_history": score_history,
-        "scan_id": latest.get('scan_id')
-    }
+    return jsonify({
+        'server_name': server_name,
+        'hostname': latest.get('hostname'),
+        'os_info': latest.get('os_info'),
+        'last_scan': latest.get('scan_timestamp'),
+        'score': latest.get('score', {}),
+        'previous_score': latest.get('previous_score'),
+        'drift': latest.get('drift', {}),
+        'failed_checks': failed_checks,
+        'all_checks': checks,
+        'score_history': score_history,
+        'scan_id': latest.get('scan_id')
+    })
 
 
-@app.get("/api/v1/dashboard/history")
-async def get_scan_history(
-    client_id: str = Depends(verify_dashboard_token)
-):
-    """Get scan history for all servers"""
-    scans = get_client_scans(client_id)
-
-    history = []
-    for scan in scans[:50]:
-        history.append({
-            'scan_id': scan.get('scan_id'),
-            'server_name': scan.get('server_name'),
-            'timestamp': scan.get('scan_timestamp'),
-            'score': scan.get('score', {}).get('score', 0),
-            'failures': scan.get('score', {}).get('fail', 0),
-            'drift': scan.get('drift', {}).get(
-                'has_changes', False
-            )
-        })
-
-    return {
-        "total_scans": len(history),
-        "history": history
-    }
-
-
-@app.get("/api/v1/dashboard/alerts")
-async def get_alerts(
-    client_id: str = Depends(verify_dashboard_token)
-):
-    """Get active alerts for client"""
+@app.route('/api/v1/dashboard/alerts')
+@session_required
+def get_alerts(client_id):
+    """Active alerts for client"""
     scans = get_client_scans(client_id)
     alerts = []
-
     servers_seen = set()
+
     for scan in scans:
         server = scan.get('server_name')
         if server in servers_seen:
@@ -637,58 +525,64 @@ async def get_alerts(
                 'type': 'critical_score',
                 'severity': 'critical',
                 'server': server,
-                'message': f"Compliance score critically low: {score}%",
+                'message': f"Score critically low: {score}%",
                 'timestamp': scan.get('scan_timestamp')
             })
 
         drift = scan.get('drift', {})
-        if drift.get('new_failures'):
-            for failure in drift['new_failures']:
-                if failure.get('severity') in [
-                    'critical', 'high'
-                ]:
-                    alerts.append({
-                        'type': 'new_failure',
-                        'severity': failure['severity'],
-                        'server': server,
-                        'message': f"New failure: {failure['description']}",
-                        'timestamp': scan.get('scan_timestamp')
-                    })
+        for failure in drift.get('new_failures', []):
+            if failure.get('severity') in ['critical', 'high']:
+                alerts.append({
+                    'type': 'new_failure',
+                    'severity': failure['severity'],
+                    'server': server,
+                    'message': f"New: {failure['description']}",
+                    'timestamp': scan.get('scan_timestamp')
+                })
 
-    return {
-        "total_alerts": len(alerts),
-        "alerts": sorted(
-            alerts,
-            key=lambda x: {
-                'critical': 0, 'high': 1,
-                'medium': 2, 'low': 3
-            }.get(x.get('severity', 'low'), 3)
-        )
-    }
+    return jsonify({
+        'total_alerts': len(alerts),
+        'alerts': alerts
+    })
+
+
+@app.route('/api/v1/dashboard/history')
+@session_required
+def scan_history(client_id):
+    """Scan history for all servers"""
+    scans = get_client_scans(client_id)
+    history = []
+    for scan in scans[:50]:
+        history.append({
+            'scan_id': scan.get('scan_id'),
+            'server_name': scan.get('server_name'),
+            'timestamp': scan.get('scan_timestamp'),
+            'score': scan.get('score', {}).get('score', 0),
+            'failures': scan.get('score', {}).get('fail', 0),
+            'drift': scan.get(
+                'drift', {}
+            ).get('has_changes', False)
+        })
+    return jsonify({
+        'total_scans': len(history),
+        'history': history
+    })
 
 
 # ==========================================
 # ADMIN ENDPOINTS
 # ==========================================
 
-@app.post("/api/v1/admin/register_client")
-async def register_client(
-    client: ClientRegister,
-    request: Request
-):
-    """
-    Register new client
-    Admin uses this to onboard new clients
-    Protected by admin secret in header
-    """
-    admin_secret = request.headers.get('X-Admin-Secret')
-    expected = os.environ.get('TRINITY6_ADMIN_SECRET', 'changeme')
+@app.route('/api/v1/admin/register_client',
+           methods=['POST'])
+def register_client():
+    """Register new client"""
+    if not verify_admin(request):
+        return jsonify({'error': 'Unauthorized'}), 403
 
-    if admin_secret != expected:
-        raise HTTPException(
-            status_code=403,
-            detail="Invalid admin secret"
-        )
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'No data'}), 400
 
     client_id = str(uuid.uuid4())[:8]
     agent_token = secrets.token_urlsafe(32)
@@ -699,10 +593,10 @@ async def register_client(
 
     clients = load_clients()
     clients[client_id] = {
-        'name': client.name,
-        'company': client.company,
-        'email': client.email,
-        'plan': client.plan,
+        'name': data.get('name'),
+        'company': data.get('company'),
+        'email': data.get('email'),
+        'plan': data.get('plan', 'starter'),
         'password_hash': password_hash,
         'created_at': datetime.now().isoformat(),
         'servers': {},
@@ -712,48 +606,37 @@ async def register_client(
     save_clients(clients)
 
     tokens = load_tokens()
-    tokens[client_id] = {
-        'agent_token': agent_token
-    }
+    tokens[client_id] = {'agent_token': agent_token}
     save_tokens(tokens)
 
     logger.info(
-        f"New client registered: {client.company} "
-        f"id={client_id}"
+        f"New client: {data.get('company')} id={client_id}"
     )
 
-    return {
-        "success": True,
-        "client_id": client_id,
-        "agent_token": agent_token,
-        "temp_password": temp_password,
-        "dashboard_url": f"https://trinity6.com/dashboard",
-        "install_command": (
-            f"curl -s https://trinity6.com/install.sh | "
-            f"sudo bash -s -- "
+    return jsonify({
+        'success': True,
+        'client_id': client_id,
+        'agent_token': agent_token,
+        'temp_password': temp_password,
+        'dashboard_url': 'https://trinity6-platform.onrender.com',
+        'install_command': (
+            f"curl -s https://trinity6-platform.onrender.com"
+            f"/install.sh | sudo bash -s -- "
             f"--client-id {client_id} "
             f"--token {agent_token} "
-            f"--email {client.email}"
-        ),
-        "message": (
-            f"Client registered successfully. "
-            f"Send install command to {client.company}."
+            f"--email {data.get('email')}"
         )
-    }
+    })
 
 
-@app.get("/api/v1/admin/clients")
-async def list_clients(request: Request):
+@app.route('/api/v1/admin/clients')
+def list_clients():
     """List all clients"""
-    admin_secret = request.headers.get('X-Admin-Secret')
-    expected = os.environ.get('TRINITY6_ADMIN_SECRET', 'changeme')
-
-    if admin_secret != expected:
-        raise HTTPException(status_code=403)
+    if not verify_admin(request):
+        return jsonify({'error': 'Unauthorized'}), 403
 
     clients = load_clients()
     summary = []
-
     for client_id, client in clients.items():
         servers = client.get('servers', {})
         scores = [
@@ -763,7 +646,6 @@ async def list_clients(request: Request):
         avg_score = round(
             sum(scores) / len(scores)
         ) if scores else 0
-
         summary.append({
             'client_id': client_id,
             'company': client.get('company'),
@@ -775,124 +657,20 @@ async def list_clients(request: Request):
             'last_activity': client.get('last_activity')
         })
 
-    return {
-        "total_clients": len(summary),
-        "clients": sorted(
+    return jsonify({
+        'total_clients': len(summary),
+        'clients': sorted(
             summary,
             key=lambda x: x.get('last_activity', ''),
             reverse=True
         )
-    }
-
-
-# ==========================================
-# HELPERS
-# ==========================================
-
-def get_server_status(score: int) -> str:
-    """Get status label from score"""
-    if score >= 80:
-        return 'good'
-    elif score >= 60:
-        return 'warning'
-    else:
-        return 'critical'
-
-
-def send_scan_notification(
-    client_id: str,
-    clients: dict,
-    scan_data: dict,
-    score: dict,
-    drift: dict
-):
-    """
-    Send email notification after scan
-    Email contains summary and dashboard link
-    Not raw scan data
-    """
-    client = clients.get(client_id, {})
-    client_email = client.get('email')
-
-    if not client_email:
-        return
-
-    has_critical = score.get('critical', 0) > 0
-    has_new_failures = drift.get('new_failure_count', 0) > 0
-
-    if not has_critical and not has_new_failures:
-        return
-
-    subject = f"Trinity6 Alert - {scan_data['server_name']}"
-    if has_critical:
-        subject = f"Trinity6 CRITICAL Alert - {scan_data['server_name']}"
-
-    dashboard_url = (
-        f"https://trinity6.com/dashboard"
-        f"?server={scan_data['server_name']}"
-    )
-
-    body = f"""
-Trinity6 Security Alert
-
-Server: {scan_data['server_name']}
-Scan Time: {scan_data['scan_timestamp']}
-Compliance Score: {score['score']}%
-
-Issues Found:
-Critical: {score.get('critical', 0)}
-High: {score.get('high', 0)}
-Medium: {score.get('medium', 0)}
-
-"""
-    if has_new_failures:
-        body += f"New failures since last scan: "
-        body += f"{drift['new_failure_count']}\n"
-
-    body += f"\nView full report and fixes:\n{dashboard_url}\n"
-    body += "\nTrinity6 - Intelligent Security\ntrinitiy6.com"
-
-    logger.info(
-        f"Notification queued for {client_email} "
-        f"score={score['score']}%"
-    )
-
-
-# ==========================================
-# HEALTH CHECK
-# ==========================================
-
-@app.get("/health")
-async def health_check():
-    """API health check"""
-    clients = load_clients()
-    return {
-        "status": "healthy",
-        "version": "1.0.0",
-        "total_clients": len(clients),
-        "timestamp": datetime.now().isoformat()
-    }
-
-
-@app.get("/")
-async def root():
-    """Root endpoint"""
-    return {
-        "name": "Trinity6 Platform API",
-        "version": "1.0.0",
-        "status": "running",
-        "docs": "/docs"
-    }
+    })
 
 
 # ==========================================
 # RUN
 # ==========================================
 
-if __name__ == "__main__":
-    uvicorn.run(
-        "api:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=True
-    )
+if __name__ == '__main__':
+    port = int(os.environ.get('PORT', 8000))
+    app.run(host='0.0.0.0', port=port)
