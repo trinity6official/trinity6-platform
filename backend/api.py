@@ -665,6 +665,19 @@ def list_clients():
             reverse=True
         )
     })
+@app.route('/dashboard')
+def serve_dashboard():
+    """Serve dashboard HTML"""
+    dashboard_path = os.path.join(
+        os.path.dirname(os.path.dirname(__file__)),
+        'dashboard', 'index.html'
+    )
+    if os.path.exists(dashboard_path):
+        with open(dashboard_path, 'r') as f:
+            return f.read(), 200, {
+                'Content-Type': 'text/html'
+            }
+    return "Dashboard not found", 404
 
 
 # ==========================================
